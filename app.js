@@ -6,9 +6,8 @@ const express = require('express');
 const crypto = require('crypto');
 const bodyParser = require('body-parser');
 const request = require('request');
-const app = express();
 const uuid = require('uuid');
-
+const app = express();
 
 // Messenger API parameters
 if (!config.FB_PAGE_TOKEN) {
@@ -35,7 +34,15 @@ if (!config.FB_APP_SECRET) {
 if (!config.SERVER_URL) { //used for ink to static files
     throw new Error('missing SERVER_URL');
 }
-
+if (!config.SENDGRID_API_KEY) { //used for ink to static files
+    throw new Error('missing SENDGRID_API_KEY');
+}
+if (!config.EMAIL_FROM) { //used for ink to static files
+    throw new Error('missing EMAIL_FROM');
+}
+if (!config.EMAIL_TO) { //used for ink to static files
+    throw new Error('missing EMAIL_TO');
+}
 
 
 app.set('port', (process.env.PORT || 5000))
@@ -60,7 +67,7 @@ app.use(bodyParser.json());
 
 
 
-
+// set up dialogflow client
 const credentials = {
     client_email: config.GOOGLE_CLIENT_EMAIL,
     private_key: config.GOOGLE_PRIVATE_KEY,
@@ -204,6 +211,23 @@ function handleEcho(messageId, appId, metadata) {
 
 function handleDialogFlowAction(sender, action, messages, contexts, parameters) {
     switch (action) {
+        case "botchallenge_response_bad":
+            let filteredContexts = contexts.filter(function (el) {
+                return e.name.includes('botchallenge_response') || el.name.includes('botchallenge_response_dialog_context')
+            });
+            let improve_data = ''; 
+            if (filteredContexts.length > 0 && contexts[0].parameters) {
+                let params = contexts[0].parameters;
+                improve_data = params.fields['improve-info'] != '' ? params.fields['improve-info'].stringValue : '';
+            }
+            if (improve_data != '') {
+                let emailContent = 'Hay una nueva sugerencia .<br>' + improve_data;
+                sendEmail('Nueva sugerencia Moin App', emailContent);
+                handleMessages(messages, sender);
+            } else {
+                handleMessages(messages, sender);
+            }
+        break;
         default:
             //unhandled action, just send back the text
             handleMessages(messages, sender);
@@ -213,7 +237,7 @@ function handleDialogFlowAction(sender, action, messages, contexts, parameters) 
 function handleMessage(message, sender) {
     switch (message.message) {
         case "text": //text
-            message.text.text.forEach((text) => {
+                message.text.text.forEach((text) => {
                 if (text !== '') {
                     sendTextMessage(sender, text);
                 }
